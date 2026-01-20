@@ -1,0 +1,16 @@
+以下のコマンドをターミナルで実行してください：
+
+# 1. プロジェクトディレクトリに移動
+cd /Users/nakajima-yuusuke/Desktop/Cursor/faq-knowledge-base
+
+# 2. GitHubリポジトリを接続（[あなたのGitHubユーザー名]を実際の値に置き換える）
+git remote add origin https://github.com/[あなたのGitHubユーザー名]/faq-knowledge-base.git
+
+# 3. ブランチ名をmainに設定
+git branch -M main
+
+# 4. GitHubにプッシュ
+git push -u origin main
+
+注意: 最初にGitHubでリポジトリを作成する必要があります。
+リポジトリ名: faq-knowledge-base
