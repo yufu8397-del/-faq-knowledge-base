@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showChatUploader, setShowChatUploader] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [stats, setStats] = useState<any>(null);
@@ -50,11 +51,25 @@ const App: React.FC = () => {
   const handleLoginSuccess = (token: string) => {
     localStorage.setItem('adminToken', token);
     setIsAdmin(true);
+    setShowForm(false);
+    setShowChatUploader(false);
+    setShowAdminLogin(false);
+    loadFAQs();
+    loadCategories();
+    loadStats();
   };
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
     setIsAdmin(false);
+    setShowForm(false);
+    setShowChatUploader(false);
+    setShowAdminLogin(false);
+    setSearchResults([]);
+    setIsSearching(false);
+    loadFAQs();
+    loadCategories();
+    loadStats();
   };
 
   const loadFAQs = async () => {
@@ -133,21 +148,33 @@ const App: React.FC = () => {
     <div className="App">
       <header className="App-header">
         <div className="header-content">
-          <div>
-            <h1>📚 FAQ ナレッジベース</h1>
-            <p>よくある質問を検索・管理できます</p>
+          <div className="header-main">
+            <h1>❓ よくある質問</h1>
+            <p>質問を入力すると、過去の回答から自動で見つけます</p>
           </div>
-          {isAdmin && (
-            <button onClick={handleLogout} className="logout-button">
-              🚪 ログアウト
-            </button>
-          )}
+          <div className="header-actions">
+            {isAdmin ? (
+              <div className="admin-controls">
+                <span className="admin-badge">管理者モード</span>
+                <button onClick={handleLogout} className="logout-button-small">
+                  ログアウト
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowAdminLogin(!showAdminLogin)} 
+                className="admin-login-link"
+              >
+                管理者ログイン
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      <div className="App-container">
-        {isAdmin ? (
-          <div className="App-sidebar">
+      <div className={`App-container ${isAdmin ? 'has-sidebar' : ''}`}>
+        {isAdmin && (
+          <div className="App-sidebar admin-sidebar">
             <Stats stats={stats} />
             
             <div className="category-filter">
@@ -183,24 +210,13 @@ const App: React.FC = () => {
               {showChatUploader ? '✕ 閉じる' : '📄 チャット履歴から自動抽出'}
             </button>
           </div>
-        ) : (
-          <div className="App-sidebar">
-            <div className="user-info">
-              <h3>👤 受講生モード</h3>
-              <p>質問と回答の検索・閲覧ができます</p>
-            </div>
-            <div className="admin-login-prompt">
-              <h4>管理者の方へ</h4>
-              <p>FAQの管理には管理者ログインが必要です</p>
-            </div>
-          </div>
         )}
 
         <div className="App-main">
           <SearchBar onSearch={handleSearch} />
           
-          {!isAdmin && (
-            <div style={{ background: 'white', padding: '2rem', borderRadius: '12px', marginBottom: '1.5rem', textAlign: 'center' }}>
+          {!isAdmin && showAdminLogin && (
+            <div className="admin-login-compact">
               <Login onLoginSuccess={handleLoginSuccess} />
             </div>
           )}

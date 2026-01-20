@@ -1,14 +1,16 @@
 .faq-item {
   border: 2px solid #e0e0e0;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   transition: all 0.3s;
   background: white;
+  margin-bottom: 1rem;
 }
 
 .faq-item:hover {
   border-color: #667eea;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+  transform: translateY(-2px);
 }
 
 .faq-item.editing {
@@ -43,9 +45,10 @@
 
 .faq-question h3 {
   color: #333;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   font-weight: 600;
   margin: 0;
+  line-height: 1.5;
 }
 
 .faq-meta {
