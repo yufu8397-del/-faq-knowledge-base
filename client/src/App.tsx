@@ -4,6 +4,7 @@ import SearchBar from './components/SearchBar';
 import FAQList from './components/FAQList';
 import FAQForm from './components/FAQForm';
 import Stats from './components/Stats';
+import ChatHistoryUploader from './components/ChatHistoryUploader';
 import { FAQ, Category } from './types';
 import { searchFAQs, getFAQs, getCategories, getStats } from './api';
 
@@ -12,6 +13,7 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<FAQ[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showChatUploader, setShowChatUploader] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [stats, setStats] = useState<any>(null);
@@ -121,6 +123,13 @@ const App: React.FC = () => {
           >
             {showForm ? '✕ 閉じる' : '+ 新しいFAQを追加'}
           </button>
+
+          <button
+            className="chat-upload-button"
+            onClick={() => setShowChatUploader(!showChatUploader)}
+          >
+            {showChatUploader ? '✕ 閉じる' : '📄 チャット履歴から自動抽出'}
+          </button>
         </div>
 
         <div className="App-main">
@@ -130,6 +139,13 @@ const App: React.FC = () => {
             <FAQForm
               onSuccess={handleFAQAdded}
               onCancel={() => setShowForm(false)}
+              categories={categories}
+            />
+          )}
+
+          {showChatUploader && (
+            <ChatHistoryUploader
+              onSuccess={handleFAQAdded}
               categories={categories}
             />
           )}

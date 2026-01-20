@@ -64,7 +64,8 @@
   border-color: #667eea;
 }
 
-.add-faq-button {
+.add-faq-button,
+.chat-upload-button {
   width: 100%;
   padding: 1rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -75,11 +76,17 @@
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  margin-bottom: 0.75rem;
 }
 
-.add-faq-button:hover {
+.add-faq-button:hover,
+.chat-upload-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.chat-upload-button {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
 .App-main {

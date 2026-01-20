@@ -55,3 +55,23 @@ export const getStats = async (): Promise<any> => {
   const response = await api.get('/stats');
   return response.data;
 };
+
+export const extractQAFromChatHistory = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const baseUrl = process.env.REACT_APP_API_URL || 
+    (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3001/api');
+  
+  const response = await fetch(`${baseUrl}/extract-qa`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  return response.json();
+};
+
+export const bulkCreateFAQs = async (pairs: Array<{question: string, answer: string}>, category?: string): Promise<any> => {
+  const response = await api.post('/faqs/bulk', { pairs, category });
+  return response.data;
+};

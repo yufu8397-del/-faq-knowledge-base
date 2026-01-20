@@ -4,6 +4,8 @@ const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
+const { extractQAFromText } = require('./chatParser');
 require('dotenv').config();
 
 const app = express();
@@ -13,6 +15,12 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ファイルアップロード用の設定
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB制限
+});
 
 // 本番環境でReactアプリの静的ファイルを配信
 if (process.env.NODE_ENV === 'production') {
@@ -338,8 +346,104 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
+// チャット履歴から質問と回答を抽出
+app.post('/api/extract-qa', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'ファイルがアップロードされていません' });
+    }
+    
+    const text = req.file.buffer.toString('utf-8');
+    const pairs = extractQAFromText(text);
+    
+    res.json({
+      success: true,
+      count: pairs.length,
+      pairs: pairs
+    });
+  } catch (error) {
+    console.error('抽出エラー:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 抽出した質問と回答を一括でFAQに追加
+app.post('/api/faqs/bulk', (req, res) => {
+  const { pairs, category } = req.body;
+  
+  if (!Array.isArray(pairs) || pairs.length === 0) {
+    return res.status(400).json({ error: '質問と回答のペアが必要です' });
+  }
+  
+  const results = [];
+  let successCount = 0;
+  let errorCount = 0;
+  let processedCount = 0;
+  
+  db.serialize(() => {
+    const stmt = db.prepare('INSERT INTO faqs (question, answer, category, tags) VALUES (?, ?, ?, ?)');
+    
+    pairs.forEach((pair, index) => {
+      if (!pair.question || !pair.answer) {
+        errorCount++;
+        results.push({ index, success: false, error: '質問または回答が空です' });
+        processedCount++;
+        if (processedCount === pairs.length) {
+          stmt.finalize();
+          res.json({
+            success: true,
+            total: pairs.length,
+            successCount,
+            errorCount,
+            results
+          });
+        }
+        return;
+      }
+      
+      stmt.run(
+        pair.question.trim(),
+        pair.answer.trim(),
+        category || pair.category || null,
+        pair.tags || '',
+        function(err) {
+          processedCount++;
+          if (err) {
+            errorCount++;
+            results.push({ index, success: false, error: err.message });
+          } else {
+            successCount++;
+            results.push({ 
+              index, 
+              success: true, 
+              id: this.lastID,
+              question: pair.question,
+              answer: pair.answer
+            });
+          }
+          
+          // 最後の処理が終わったら結果を返す
+          if (processedCount === pairs.length) {
+            stmt.finalize();
+            res.json({
+              success: true,
+              total: pairs.length,
+              successCount,
+              errorCount,
+              results
+            });
+          }
+        }
+      );
+    });
+  });
+});
+
 // サーバー起動
 app.listen(PORT, () => {
   console.log(`サーバーが起動しました: http://localhost:${PORT}`);
   console.log(`APIエンドポイント: http://localhost:${PORT}/api`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log('本番モードで実行中');
+  }
 });
