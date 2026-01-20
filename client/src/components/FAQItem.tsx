@@ -9,9 +9,10 @@ interface FAQItemProps {
   onUpdate: () => void;
   onDelete: () => void;
   categories: Category[];
+  isAdmin: boolean;
 }
 
-const FAQItem: React.FC<FAQItemProps> = ({ faq, onUpdate, onDelete, categories }) => {
+const FAQItem: React.FC<FAQItemProps> = ({ faq, onUpdate, onDelete, categories, isAdmin }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -90,12 +91,16 @@ const FAQItem: React.FC<FAQItemProps> = ({ faq, onUpdate, onDelete, categories }
               <button className="helpful-button" onClick={handleHelpful}>
                 👍 役に立った
               </button>
-              <button className="edit-button" onClick={() => setIsEditing(true)}>
-                ✏️ 編集
-              </button>
-              <button className="delete-button" onClick={handleDelete}>
-                🗑️ 削除
-              </button>
+              {isAdmin && (
+                <>
+                  <button className="edit-button" onClick={() => setIsEditing(true)}>
+                    ✏️ 編集
+                  </button>
+                  <button className="delete-button" onClick={handleDelete}>
+                    🗑️ 削除
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

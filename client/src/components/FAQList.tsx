@@ -9,9 +9,10 @@ interface FAQListProps {
   onUpdate: () => void;
   onDelete: () => void;
   categories: Category[];
+  isAdmin: boolean;
 }
 
-const FAQList: React.FC<FAQListProps> = ({ faqs, isSearching, onUpdate, onDelete, categories }) => {
+const FAQList: React.FC<FAQListProps> = ({ faqs, isSearching, onUpdate, onDelete, categories, isAdmin }) => {
   if (isSearching && faqs.length === 0) {
     return (
       <div className="faq-list-container">
@@ -47,6 +48,7 @@ const FAQList: React.FC<FAQListProps> = ({ faqs, isSearching, onUpdate, onDelete
             onUpdate={onUpdate}
             onDelete={onDelete}
             categories={categories}
+            isAdmin={isAdmin}
           />
         ))}
       </div>

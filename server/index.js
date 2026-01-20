@@ -5,6 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { extractQAFromText } = require('./chatParser');
 require('dotenv').config();
 
@@ -26,6 +28,10 @@ const upload = multer({
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client/build')));
 }
+
+// JWT秘密鍵（環境変数から取得、なければデフォルト）
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'; // 本番環境では環境変数で設定
 
 // データベースの初期化
 const dbPath = path.join(__dirname, 'database.db');
@@ -58,6 +64,26 @@ db.serialize(() => {
   )`, (err) => {
     if (err) {
       console.error('search_logsテーブルの作成エラー:', err);
+    }
+  });
+
+  // 管理者パスワードのハッシュ化と保存（初回のみ）
+  db.get('SELECT COUNT(*) as count FROM admin_settings', (err, row) => {
+    if (err) {
+      // テーブルが存在しない場合は作成
+      db.run(`CREATE TABLE IF NOT EXISTS admin_settings (
+        id INTEGER PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`, () => {
+        // 初期パスワードをハッシュ化して保存
+        const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+        db.run('INSERT OR IGNORE INTO admin_settings (id, password_hash) VALUES (1, ?)', [hash]);
+      });
+    } else if (row.count === 0) {
+      // テーブルは存在するがデータがない場合
+      const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+      db.run('INSERT INTO admin_settings (id, password_hash) VALUES (1, ?)', [hash]);
     }
   });
 
@@ -116,7 +142,68 @@ db.serialize(() => {
   });
 });
 
+// 認証ミドルウェア
+const authenticateAdmin = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.status(401).json({ error: '認証が必要です' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ error: '管理者権限が必要です' });
+    }
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: '無効なトークンです' });
+  }
+};
+
 // API ルート
+
+// 管理者ログイン
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body;
+  
+  if (!password) {
+    return res.status(400).json({ error: 'パスワードが必要です' });
+  }
+  
+  db.get('SELECT password_hash FROM admin_settings WHERE id = 1', (err, row) => {
+    if (err || !row) {
+      return res.status(500).json({ error: '認証エラーが発生しました' });
+    }
+    
+    const isValid = bcrypt.compareSync(password, row.password_hash);
+    
+    if (isValid) {
+      // トークンの有効期限を7日間に設定（長期間ログイン状態を維持）
+      const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ success: true, token, role: 'admin' });
+    } else {
+      res.status(401).json({ error: 'パスワードが正しくありません' });
+    }
+  });
+});
+
+// 認証状態の確認
+app.get('/api/auth/check', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.json({ authenticated: false, role: 'guest' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ authenticated: true, role: decoded.role });
+  } catch (error) {
+    res.json({ authenticated: false, role: 'guest' });
+  }
+});
 
 // 全FAQ取得
 app.get('/api/faqs', (req, res) => {
@@ -218,8 +305,8 @@ app.get('/api/faqs/:id', (req, res) => {
   });
 });
 
-// FAQ作成
-app.post('/api/faqs', (req, res) => {
+// FAQ作成（管理者のみ）
+app.post('/api/faqs', authenticateAdmin, (req, res) => {
   const { question, answer, category, tags } = req.body;
   
   if (!question || !answer) {
@@ -240,8 +327,8 @@ app.post('/api/faqs', (req, res) => {
   );
 });
 
-// FAQ更新
-app.put('/api/faqs/:id', (req, res) => {
+// FAQ更新（管理者のみ）
+app.put('/api/faqs/:id', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   const { question, answer, category, tags } = req.body;
   
@@ -266,8 +353,8 @@ app.put('/api/faqs/:id', (req, res) => {
   );
 });
 
-// FAQ削除
-app.delete('/api/faqs/:id', (req, res) => {
+// FAQ削除（管理者のみ）
+app.delete('/api/faqs/:id', authenticateAdmin, (req, res) => {
   const { id } = req.params;
   db.run('DELETE FROM faqs WHERE id = ?', [id], function(err) {
     if (err) {
@@ -346,8 +433,9 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-// チャット履歴から質問と回答を抽出
-app.post('/api/extract-qa', upload.single('file'), (req, res) => {
+// チャット履歴から質問と回答を抽出（管理者のみ）
+// 認証チェックを先に行う
+app.post('/api/extract-qa', authenticateAdmin, upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'ファイルがアップロードされていません' });
@@ -367,8 +455,8 @@ app.post('/api/extract-qa', upload.single('file'), (req, res) => {
   }
 });
 
-// 抽出した質問と回答を一括でFAQに追加
-app.post('/api/faqs/bulk', (req, res) => {
+// 抽出した質問と回答を一括でFAQに追加（管理者のみ）
+app.post('/api/faqs/bulk', authenticateAdmin, (req, res) => {
   const { pairs, category } = req.body;
   
   if (!Array.isArray(pairs) || pairs.length === 0) {

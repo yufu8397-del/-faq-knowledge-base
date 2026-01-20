@@ -42,8 +42,15 @@ const ChatHistoryUploader: React.FC<ChatHistoryUploaderProps> = ({ onSuccess, ca
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/extract-qa', {
+      const token = localStorage.getItem('adminToken');
+      const baseUrl = process.env.REACT_APP_API_URL || 
+        (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3001/api');
+      
+      const response = await fetch(`${baseUrl}/extract-qa`, {
         method: 'POST',
+        headers: token ? {
+          'Authorization': `Bearer ${token}`
+        } : {},
         body: formData,
       });
 

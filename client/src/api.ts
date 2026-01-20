@@ -12,6 +12,15 @@ const api = axios.create({
   },
 });
 
+// リクエストインターセプターでトークンを自動追加
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('adminToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export const getFAQs = async (category?: string): Promise<FAQ[]> => {
   const params = category ? { category } : {};
   const response = await api.get('/faqs', { params });
@@ -74,4 +83,23 @@ export const extractQAFromChatHistory = async (file: File): Promise<any> => {
 export const bulkCreateFAQs = async (pairs: Array<{question: string, answer: string}>, category?: string): Promise<any> => {
   const response = await api.post('/faqs/bulk', { pairs, category });
   return response.data;
+};
+
+export const login = async (password: string): Promise<any> => {
+  const response = await api.post('/auth/login', { password });
+  return response.data;
+};
+
+export const checkAuth = async (): Promise<any> => {
+  const token = localStorage.getItem('adminToken');
+  if (!token) {
+    return { authenticated: false, role: 'guest' };
+  }
+  
+  const response = await fetch(`${API_BASE_URL}/auth/check`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  return response.json();
 };

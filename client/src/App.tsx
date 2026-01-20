@@ -5,8 +5,9 @@ import FAQList from './components/FAQList';
 import FAQForm from './components/FAQForm';
 import Stats from './components/Stats';
 import ChatHistoryUploader from './components/ChatHistoryUploader';
+import Login from './components/Login';
 import { FAQ, Category } from './types';
-import { searchFAQs, getFAQs, getCategories, getStats } from './api';
+import { searchFAQs, getFAQs, getCategories, getStats, checkAuth } from './api';
 
 const App: React.FC = () => {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -17,12 +18,44 @@ const App: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [stats, setStats] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
+    checkAuthentication();
     loadFAQs();
     loadCategories();
     loadStats();
   }, [selectedCategory]);
+
+  const checkAuthentication = async () => {
+    setIsCheckingAuth(true);
+    try {
+      const auth = await checkAuth();
+      if (auth.authenticated && auth.role === 'admin') {
+        setIsAdmin(true);
+      } else {
+        // トークンが無効な場合は削除
+        localStorage.removeItem('adminToken');
+        setIsAdmin(false);
+      }
+    } catch (error) {
+      localStorage.removeItem('adminToken');
+      setIsAdmin(false);
+    } finally {
+      setIsCheckingAuth(false);
+    }
+  };
+
+  const handleLoginSuccess = (token: string) => {
+    localStorage.setItem('adminToken', token);
+    setIsAdmin(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    setIsAdmin(false);
+  };
 
   const loadFAQs = async () => {
     try {
@@ -87,55 +120,92 @@ const App: React.FC = () => {
 
   const displayFAQs = isSearching ? searchResults : faqs;
 
+  // 認証チェック中
+  if (isCheckingAuth) {
+    return (
+      <div className="App">
+        <div className="loading">読み込み中...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="App">
       <header className="App-header">
-        <h1>📚 FAQ ナレッジベース</h1>
-        <p>よくある質問を検索・管理できます</p>
+        <div className="header-content">
+          <div>
+            <h1>📚 FAQ ナレッジベース</h1>
+            <p>よくある質問を検索・管理できます</p>
+          </div>
+          {isAdmin && (
+            <button onClick={handleLogout} className="logout-button">
+              🚪 ログアウト
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="App-container">
-        <div className="App-sidebar">
-          <Stats stats={stats} />
-          
-          <div className="category-filter">
-            <h3>カテゴリで絞り込み</h3>
-            <select
-              value={selectedCategory}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value);
-                setIsSearching(false);
-                setSearchResults([]);
-              }}
+        {isAdmin ? (
+          <div className="App-sidebar">
+            <Stats stats={stats} />
+            
+            <div className="category-filter">
+              <h3>カテゴリで絞り込み</h3>
+              <select
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value);
+                  setIsSearching(false);
+                  setSearchResults([]);
+                }}
+              >
+                <option value="">すべて</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              className="add-faq-button"
+              onClick={() => setShowForm(!showForm)}
             >
-              <option value="">すべて</option>
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+              {showForm ? '✕ 閉じる' : '+ 新しいFAQを追加'}
+            </button>
+
+            <button
+              className="chat-upload-button"
+              onClick={() => setShowChatUploader(!showChatUploader)}
+            >
+              {showChatUploader ? '✕ 閉じる' : '📄 チャット履歴から自動抽出'}
+            </button>
           </div>
-
-          <button
-            className="add-faq-button"
-            onClick={() => setShowForm(!showForm)}
-          >
-            {showForm ? '✕ 閉じる' : '+ 新しいFAQを追加'}
-          </button>
-
-          <button
-            className="chat-upload-button"
-            onClick={() => setShowChatUploader(!showChatUploader)}
-          >
-            {showChatUploader ? '✕ 閉じる' : '📄 チャット履歴から自動抽出'}
-          </button>
-        </div>
+        ) : (
+          <div className="App-sidebar">
+            <div className="user-info">
+              <h3>👤 受講生モード</h3>
+              <p>質問と回答の検索・閲覧ができます</p>
+            </div>
+            <div className="admin-login-prompt">
+              <h4>管理者の方へ</h4>
+              <p>FAQの管理には管理者ログインが必要です</p>
+            </div>
+          </div>
+        )}
 
         <div className="App-main">
           <SearchBar onSearch={handleSearch} />
           
-          {showForm && (
+          {!isAdmin && (
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '12px', marginBottom: '1.5rem', textAlign: 'center' }}>
+              <Login onLoginSuccess={handleLoginSuccess} />
+            </div>
+          )}
+          
+          {isAdmin && showForm && (
             <FAQForm
               onSuccess={handleFAQAdded}
               onCancel={() => setShowForm(false)}
@@ -143,7 +213,7 @@ const App: React.FC = () => {
             />
           )}
 
-          {showChatUploader && (
+          {isAdmin && showChatUploader && (
             <ChatHistoryUploader
               onSuccess={handleFAQAdded}
               categories={categories}
@@ -156,6 +226,7 @@ const App: React.FC = () => {
             onUpdate={handleFAQUpdated}
             onDelete={handleFAQDeleted}
             categories={categories}
+            isAdmin={isAdmin}
           />
         </div>
       </div>
