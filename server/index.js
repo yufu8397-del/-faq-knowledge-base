@@ -140,6 +140,73 @@ db.serialize(() => {
       }
     });
   });
+
+  // ドキュメントテーブルの作成
+  db.run(`CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    category TEXT,
+    tags TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`, (err) => {
+    if (err) {
+      console.error('documentsテーブルの作成エラー:', err);
+    }
+  });
+
+  // ドキュメント用の全文検索インデックス
+  db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+    title,
+    content,
+    category,
+    tags,
+    content='documents',
+    content_rowid='id'
+  )`, (err) => {
+    if (err) {
+      console.error('documents_ftsテーブルの作成エラー:', err);
+    }
+  });
+
+  // ドキュメントFTS5のトリガー
+  db.run(`CREATE TRIGGER IF NOT EXISTS documents_fts_insert AFTER INSERT ON documents BEGIN
+    INSERT INTO documents_fts(rowid, title, content, category, tags)
+    VALUES (new.id, new.title, new.content, new.category, new.tags);
+  END`, (err) => {
+    if (err) {
+      console.error('documents_fts_insertトリガーの作成エラー:', err);
+    }
+  });
+
+  db.run(`CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, content, category, tags)
+    VALUES('delete', old.id, old.title, old.content, old.category, old.tags);
+  END`, (err) => {
+    if (err) {
+      console.error('documents_fts_deleteトリガーの作成エラー:', err);
+    }
+  });
+
+  db.run(`CREATE TRIGGER IF NOT EXISTS documents_fts_update AFTER UPDATE ON documents BEGIN
+    INSERT INTO documents_fts(documents_fts, rowid, title, content, category, tags)
+    VALUES('delete', old.id, old.title, old.content, old.category, old.tags);
+    INSERT INTO documents_fts(rowid, title, content, category, tags)
+    VALUES (new.id, new.title, new.content, new.category, new.tags);
+  END`, (err) => {
+    if (err) {
+      console.error('documents_fts_updateトリガーの作成エラー:', err);
+    } else {
+      // 既存データをFTS5に同期
+      db.run(`INSERT OR IGNORE INTO documents_fts(rowid, title, content, category, tags)
+        SELECT id, title, content, category, tags FROM documents`, (err) => {
+        if (err) {
+          console.error('既存ドキュメントデータの同期エラー:', err);
+        }
+      });
+    }
+  });
 });
 
 // 認証ミドルウェア
@@ -456,6 +523,131 @@ app.post('/api/extract-qa', authenticateAdmin, upload.single('file'), (req, res)
 });
 
 // 抽出した質問と回答を一括でFAQに追加（管理者のみ）
+// ドキュメント検索（全員が利用可能）
+app.get('/api/documents/search', (req, res) => {
+  const { q } = req.query;
+  
+  if (!q || q.trim() === '') {
+    return res.json([]);
+  }
+
+  // 全文検索クエリ（抜粋を取得）
+  const searchQuery = `
+    SELECT 
+      d.*,
+      rank,
+      snippet(documents_fts, 2, '<mark>', '</mark>', '...', 64) as content_snippet
+    FROM documents_fts fts
+    JOIN documents d ON fts.rowid = d.id
+    WHERE documents_fts MATCH ?
+    ORDER BY rank
+    LIMIT 5
+  `;
+
+  db.all(searchQuery, [q], (err, rows) => {
+    if (err) {
+      // FTS5のエラーを処理（無効なクエリの場合）
+      if (err.message.includes('malformed')) {
+        // フォールバック: LIKE検索
+        const fallbackQuery = `
+          SELECT 
+            *,
+            substr(content, 1, 200) || '...' as content_snippet
+          FROM documents
+          WHERE title LIKE ? OR content LIKE ?
+          ORDER BY created_at DESC
+          LIMIT 5
+        `;
+        const searchTerm = `%${q}%`;
+        db.all(fallbackQuery, [searchTerm, searchTerm], (err2, rows2) => {
+          if (err2) {
+            return res.status(500).json({ error: err2.message });
+          }
+          res.json(rows2);
+        });
+      } else {
+        return res.status(500).json({ error: err.message });
+      }
+    } else {
+      res.json(rows);
+    }
+  });
+});
+
+// ドキュメント一覧（管理者のみ）
+app.get('/api/documents', authenticateAdmin, (req, res) => {
+  const { limit = 50, offset = 0 } = req.query;
+  
+  const query = `
+    SELECT * FROM documents
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `;
+  
+  db.all(query, [parseInt(limit), parseInt(offset)], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+// ドキュメントアップロード（管理者のみ）
+app.post('/api/documents', authenticateAdmin, upload.single('file'), (req, res) => {
+  let title = req.body.title || '';
+  let content = req.body.content || '';
+  const category = req.body.category || null;
+  const tags = req.body.tags || null;
+
+  // ファイルアップロードの場合
+  if (req.file) {
+    const fileContent = req.file.buffer.toString('utf-8');
+    if (!title) {
+      // ファイル名からタイトルを生成
+      title = req.file.originalname.replace(/\.[^/.]+$/, '');
+    }
+    content = fileContent;
+  }
+
+  if (!title || !content) {
+    return res.status(400).json({ error: 'タイトルとコンテンツが必要です' });
+  }
+
+  const query = `
+    INSERT INTO documents (title, content, category, tags)
+    VALUES (?, ?, ?, ?)
+  `;
+
+  db.run(query, [title, content, category, tags], function(err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ 
+      id: this.lastID, 
+      title, 
+      content, 
+      category, 
+      tags,
+      message: 'ドキュメントが追加されました' 
+    });
+  });
+});
+
+// ドキュメント削除（管理者のみ）
+app.delete('/api/documents/:id', authenticateAdmin, (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM documents WHERE id = ?', [id], function(err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'ドキュメントが見つかりません' });
+    }
+    res.json({ message: 'ドキュメントが削除されました' });
+  });
+});
+
 app.post('/api/faqs/bulk', authenticateAdmin, (req, res) => {
   const { pairs, category } = req.body;
   

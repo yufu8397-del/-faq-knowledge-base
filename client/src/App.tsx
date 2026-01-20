@@ -6,15 +6,19 @@ import FAQForm from './components/FAQForm';
 import Stats from './components/Stats';
 import ChatHistoryUploader from './components/ChatHistoryUploader';
 import Login from './components/Login';
+import DocumentResults from './components/DocumentResults';
+import DocumentUploader from './components/DocumentUploader';
 import { FAQ, Category } from './types';
-import { searchFAQs, getFAQs, getCategories, getStats, checkAuth } from './api';
+import { searchFAQs, getFAQs, getCategories, getStats, checkAuth, searchDocuments, Document } from './api';
 
 const App: React.FC = () => {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [searchResults, setSearchResults] = useState<FAQ[]>([]);
+  const [documentResults, setDocumentResults] = useState<Document[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showChatUploader, setShowChatUploader] = useState(false);
+  const [showDocumentUploader, setShowDocumentUploader] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -53,6 +57,7 @@ const App: React.FC = () => {
     setIsAdmin(true);
     setShowForm(false);
     setShowChatUploader(false);
+    setShowDocumentUploader(false);
     setShowAdminLogin(false);
     loadFAQs();
     loadCategories();
@@ -64,8 +69,10 @@ const App: React.FC = () => {
     setIsAdmin(false);
     setShowForm(false);
     setShowChatUploader(false);
+    setShowDocumentUploader(false);
     setShowAdminLogin(false);
     setSearchResults([]);
+    setDocumentResults([]);
     setIsSearching(false);
     loadFAQs();
     loadCategories();
@@ -103,16 +110,23 @@ const App: React.FC = () => {
     if (!query.trim()) {
       setIsSearching(false);
       setSearchResults([]);
+      setDocumentResults([]);
       return;
     }
 
     setIsSearching(true);
     try {
-      const results = await searchFAQs(query);
-      setSearchResults(results);
+      // FAQ検索とドキュメント検索を並行実行
+      const [faqResults, docResults] = await Promise.all([
+        searchFAQs(query),
+        searchDocuments(query)
+      ]);
+      setSearchResults(faqResults);
+      setDocumentResults(docResults);
     } catch (error) {
       console.error('検索に失敗しました:', error);
       setSearchResults([]);
+      setDocumentResults([]);
     }
   };
 
@@ -209,6 +223,13 @@ const App: React.FC = () => {
             >
               {showChatUploader ? '✕ 閉じる' : '📄 チャット履歴から自動抽出'}
             </button>
+
+            <button
+              className="document-upload-button"
+              onClick={() => setShowDocumentUploader(!showDocumentUploader)}
+            >
+              {showDocumentUploader ? '✕ 閉じる' : '📚 ドキュメントを追加'}
+            </button>
           </div>
         )}
 
@@ -236,6 +257,13 @@ const App: React.FC = () => {
             />
           )}
 
+          {isAdmin && showDocumentUploader && (
+            <DocumentUploader
+              onSuccess={handleFAQAdded}
+              categories={categories}
+            />
+          )}
+
           <FAQList
             faqs={displayFAQs}
             isSearching={isSearching}
@@ -243,6 +271,11 @@ const App: React.FC = () => {
             onDelete={handleFAQDeleted}
             categories={categories}
             isAdmin={isAdmin}
+          />
+
+          <DocumentResults
+            documents={documentResults}
+            isSearching={isSearching}
           />
         </div>
       </div>

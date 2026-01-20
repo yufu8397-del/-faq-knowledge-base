@@ -103,3 +103,71 @@ export const checkAuth = async (): Promise<any> => {
   });
   return response.json();
 };
+
+// ドキュメント関連のAPI
+export interface Document {
+  id: number;
+  title: string;
+  content: string;
+  category?: string;
+  tags?: string;
+  created_at: string;
+  updated_at: string;
+  content_snippet?: string;
+}
+
+export const searchDocuments = async (query: string): Promise<Document[]> => {
+  const response = await api.get('/documents/search', { params: { q: query } });
+  return response.data;
+};
+
+export const getDocuments = async (): Promise<Document[]> => {
+  const response = await api.get('/documents');
+  return response.data;
+};
+
+export const uploadDocument = async (data: {
+  title: string;
+  content?: string;
+  category?: string;
+  tags?: string;
+  file?: File;
+}): Promise<Document> => {
+  const formData = new FormData();
+  formData.append('title', data.title);
+  if (data.content) {
+    formData.append('content', data.content);
+  }
+  if (data.category) {
+    formData.append('category', data.category);
+  }
+  if (data.tags) {
+    formData.append('tags', data.tags);
+  }
+  if (data.file) {
+    formData.append('file', data.file);
+  }
+
+  const baseUrl = process.env.REACT_APP_API_URL || 
+    (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3001/api');
+  
+  const token = localStorage.getItem('adminToken');
+  const response = await fetch(`${baseUrl}/documents`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    },
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'アップロードに失敗しました');
+  }
+  
+  return response.json();
+};
+
+export const deleteDocument = async (id: number): Promise<void> => {
+  await api.delete(`/documents/${id}`);
+};
