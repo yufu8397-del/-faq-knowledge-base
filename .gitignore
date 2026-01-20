@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+.env
+database.db
+database.db-journal
+client/build/
+client/node_modules/
+server/node_modules/
